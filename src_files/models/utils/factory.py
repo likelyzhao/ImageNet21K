@@ -3,7 +3,31 @@ import timm
 
 from ..ofa.model_zoo import ofa_flops_595m_s
 from ..tresnet import TResnetM, TResnetL
+from ..swin import build_swin_transformer_model
 from src_files.helper_functions.distributed import print_at_master
+
+
+
+def load_checkpoint_swin_t(config, model):
+    checkpoint = torch.load(config.MODEL.RESUME, map_location='cpu')
+    msg = model.load_state_dict(checkpoint['model'], strict=False)
+    logger.info(msg)
+    max_accuracy = 0.0
+    if not config.EVAL_MODE and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+        config.defrost()
+        config.TRAIN.START_EPOCH = checkpoint['epoch'] + 1
+        config.freeze()
+        if 'amp' in checkpoint and config.AMP_OPT_LEVEL != "O0" and checkpoint['config'].AMP_OPT_LEVEL != "O0":
+            amp.load_state_dict(checkpoint['amp'])
+        logger.info(f"=> loaded successfully '{config.MODEL.RESUME}' (epoch {checkpoint['epoch']})")
+        if 'max_accuracy' in checkpoint:
+            max_accuracy = checkpoint['max_accuracy']
+
+    del checkpoint
+    torch.cuda.empty_cache()
+    return max_accuracy
 
 
 def load_model_weights(model, model_path):
@@ -12,15 +36,27 @@ def load_model_weights(model, model_path):
         if 'num_batches_tracked' in key:
             continue
         p = model.state_dict()[key]
-        if key in state['state_dict']:
-            ip = state['state_dict'][key]
-            if p.shape == ip.shape:
-                p.data.copy_(ip.data)  # Copy the data of parameters
+        if 'stata_dict' in state:
+            if key in state['state_dict']:
+                ip = state['state_dict'][key]
+                if p.shape == ip.shape:
+                    p.data.copy_(ip.data)  # Copy the data of parameters
+                else:
+                    print_at_master(
+                        'could not load layer: {}, mismatch shape {} ,{}'.format(key, (p.shape), (ip.shape)))
             else:
-                print_at_master(
-                    'could not load layer: {}, mismatch shape {} ,{}'.format(key, (p.shape), (ip.shape)))
+                print_at_master('could not load layer: {}, not in checkpoint'.format(key))
         else:
-            print_at_master('could not load layer: {}, not in checkpoint'.format(key))
+            if 'model' in state:
+                if key in state['model']:
+                    ip = state['model'][key]
+                    if p.shape == ip.shape:
+                        p.data.copy_(ip.data)  # Copy the data of parameters
+                    else:
+                        print_at_master(
+                            'could not load layer: {}, mismatch shape {} ,{}'.format(key, (p.shape), (ip.shape)))
+                else:
+                    print_at_master('could not load layer: {}, not in checkpoint'.format(key))
     return model
 
 
@@ -47,6 +83,9 @@ def create_model(args):
                                                                           num_classes=args.num_classes, **model_kwargs)
     elif args.model_name == 'mobilenetv3_large_100':
         model = timm.create_model('mobilenetv3_large_100', pretrained=False, num_classes=args.num_classes)
+    elif args.model_name == 'swin_t':
+        args.cfg = "/workspace/mnt/storage/zhaozhijian/model_saving/ImageNet21K/ckpt/swin_tiny_patch4_window7_224.yaml"
+        model = build_swin_transformer_model(args)
     else:
         print("model: {} not found !!".format(args.model_name))
         exit(-1)
