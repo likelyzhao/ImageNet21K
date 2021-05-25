@@ -24,10 +24,14 @@ def print_at_master(str):
 
 
 def setup_distrib(model, args):
-    if num_distrib() > 1:
+    if args.distributed:
         torch.cuda.set_device(args.local_rank)
         if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group(backend='nccl', init_method='env://')
+            if 'tcp' in args.dist_url:
+                torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                world_size=args.world_size, rank=args.rank)
+            else:
+                torch.distributed.init_process_group(backend='nccl', init_method='env://')
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
     return model
 
