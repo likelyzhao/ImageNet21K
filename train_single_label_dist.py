@@ -17,7 +17,7 @@ import torch.multiprocessing as mp
 
 from src_files.data_loading.data_loader import create_data_loaders
 from src_files.helper_functions.distributed import print_at_master, setup_distrib, reduce_tensor, num_distrib
-from src_files.helper_functions.general_helper_functions import accuracy, AverageMeter, silence_PIL_warnings
+from src_files.helper_functions.general_helper_functions import accuracy, silence_PIL_warnings
 from src_files.models import create_model
 from src_files.loss_functions.losses import CrossEntropyLS
 from torch.cuda.amp import GradScaler, autocast
@@ -35,6 +35,7 @@ parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--epochs', default=80, type=int)
 parser.add_argument('--weight_decay', default=1e-4, type=float)
 parser.add_argument("--label_smooth", default=0.2, type=float)
+parser.add_argument("--cfg", default="", type=str)
 parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
@@ -54,6 +55,9 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 
+
+
+best_acc1 = 0
 
 def main():
     args = parser.parse_args()
@@ -83,8 +87,6 @@ def main():
 
 
 
-    pass
-
 
 def main_worker(gpu ,ngpu_per_node, args):
     torch.cuda.set_device(gpu)
@@ -113,6 +115,7 @@ def main_worker(gpu ,ngpu_per_node, args):
 
 
 def train_21k(model, train_loader, val_loader, optimizer, args):
+    global best_acc1
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -154,6 +157,9 @@ def train_21k(model, train_loader, val_loader, optimizer, args):
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            acc1, acc5 = accuracy(output.float(), target, topk=(1, 5))
+            top1.update(acc1.item(), input.size(0))
+            top5.update(acc5.item(), input.size(0))
             # batch_time = time.time() - batch_start_time
             batch_time.update(time.time() - end)
             end = time.time()
@@ -164,20 +170,31 @@ def train_21k(model, train_loader, val_loader, optimizer, args):
         print_at_master(
             "\nFinished Epoch, Training Rate: {:.1f} [img/sec]".format(len(train_loader) *
                                                                       args.batch_size / epoch_time * max(num_distrib(),
+          
                                                                                                          1)))
-
         # validation epoch
-        validate_21k(val_loader, model)
+        acc1 = validate_21k(val_loader, model, args, epoch)
+        is_best = acc1 > best_acc1
+        best_acc1 = max(acc1, best_acc1)
+        save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'best_acc1': best_acc1,
+                'optimizer' : optimizer.state_dict(),
+            }, is_best)
 
 
-def validate_21k(val_loader, model):
+def validate_21k(val_loader, model, args, epoch):
     print_at_master("starting validation")
     model.eval()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+    len(val_loader),
+    [top1, top5],
+    prefix="Epoch: [{}]".format(epoch))
     with torch.no_grad():
         for i, (input, target) in enumerate(val_loader):
-
             # mixed precision
             with autocast():
                 logits = model(input).float()
@@ -185,15 +202,18 @@ def validate_21k(val_loader, model):
             # measure accuracy and record loss
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
             if args.distributed:
-                acc1 = reduce_tensor(acc1, num_distrib())
-                acc5 = reduce_tensor(acc5, num_distrib())
+                acc1 = reduce_tensor(acc1, args.world_size)
+                acc5 = reduce_tensor(acc5, args.world_size)
                 torch.cuda.synchronize()
             top1.update(acc1.item(), input.size(0))
             top5.update(acc5.item(), input.size(0))
+            if i % 20 == 0:
+                progress.display(i)
 
     print_at_master("Validation results:")
     print_at_master('Acc_Top1 [%] {:.2f},  Acc_Top5 [%] {:.2f} '.format(top1.avg, top5.avg))
     model.train()
+    return top1.avg
 
 
 class AverageMeter(object):
@@ -236,6 +256,12 @@ class ProgressMeter(object):
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        import shutil
+        shutil.copyfile(filename, 'model_best.pth.tar')
 
 
 if __name__ == '__main__':
