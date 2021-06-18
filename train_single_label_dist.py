@@ -16,7 +16,7 @@ from torch.optim import lr_scheduler
 import torch.multiprocessing as mp
 
 from src_files.data_loading.data_loader import create_data_loaders
-from src_files.helper_functions.distributed import print_at_master, setup_distrib, reduce_tensor, num_distrib
+from src_files.helper_functions.distributed import print_at_master, setup_distrib, reduce_tensor, num_distrib, is_master
 from src_files.helper_functions.general_helper_functions import accuracy, silence_PIL_warnings
 from src_files.models import create_model
 from src_files.loss_functions.losses import CrossEntropyLS
@@ -174,14 +174,15 @@ def train_21k(model, train_loader, val_loader, optimizer, args):
                                                                                                          1)))
         # validation epoch
         acc1 = validate_21k(val_loader, model, args, epoch)
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
-        save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best)
+        if is_master():
+            is_best = acc1 > best_acc1
+            best_acc1 = max(acc1, best_acc1)
+            save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'best_acc1': best_acc1,
+                    'optimizer' : optimizer.state_dict(),
+                }, is_best)
 
 
 def validate_21k(val_loader, model, args, epoch):
