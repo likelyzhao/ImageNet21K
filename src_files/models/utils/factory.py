@@ -36,10 +36,12 @@ def load_model_weights(model, model_path):
         if 'num_batches_tracked' in key:
             continue
         p = model.state_dict()[key]
-        if 'stata_dict' in state:
-            if key in state['state_dict']:
-                ip = state['state_dict'][key]
+        if 'state_dict' in state:
+            key_state = 'module.'+ key
+            if key_state in state['state_dict']:
+                ip = state['state_dict'][key_state]
                 if p.shape == ip.shape:
+                    # print("key = ", key, "inshape = ", p.shape, "ipshape = ", ip.shape)
                     p.data.copy_(ip.data)  # Copy the data of parameters
                 else:
                     print_at_master(
@@ -84,7 +86,7 @@ def create_model(args):
     elif args.model_name == 'mobilenetv3_large_100':
         model = timm.create_model('mobilenetv3_large_100', pretrained=False, num_classes=args.num_classes)
     elif args.model_name == 'swin_t':
-        args.cfg = "/workspace/mnt/storage/zhaozhijian/model_saving/ImageNet21K/ckpt/swin_tiny_patch4_window7_224.yaml"
+        # args.cfg = "/workspace/mnt/storage/zhaozhijian/model_saving/ImageNet21K/ckpt/swin_tiny_patch4_window7_224.yaml"
         model = build_swin_transformer_model(args)
     else:
         print("model: {} not found !!".format(args.model_name))
