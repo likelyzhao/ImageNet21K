@@ -1,3 +1,17 @@
+# imagenet-21k training    
+
+mount imagenet11k rbd
+make soft link to /workspace/mnt/storage/zhaozhijian/imagenet11k/imagenet11k/
+modify the datapath & model_path in `train_dist.sh`
+run  `bash train_dist.sh` 
+
+# imagenet-1k training    
+mount the ImageNet-pytorch imagent-1k dataset
+make the soft link `imagenet11k_train -> train/` `imagenet11k_val -> val/`
+modify the datapath & imagenet22k pretrain model path in `train_dist_imagenet1k.sh`
+run `bash  train_dist_imagenet1k.sh`
+
+
 # ImageNet-21K Pretraining for the Masses
 
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/imagenet-21k-pretraining-for-the-masses/multi-label-classification-on-ms-coco)](https://paperswithcode.com/sota/multi-label-classification-on-ms-coco?p=imagenet-21k-pretraining-for-the-masses)
