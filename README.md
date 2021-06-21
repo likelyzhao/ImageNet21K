@@ -1,15 +1,15 @@
 # imagenet-21k training    
 
-mount imagenet11k rbd
-make soft link to /workspace/mnt/storage/zhaozhijian/imagenet11k/imagenet11k/
-modify the datapath & model_path in `train_dist.sh`
-run  `bash train_dist.sh` 
+mount imagenet11k rbd <br>
+make soft link to /workspace/mnt/storage/zhaozhijian/imagenet11k/imagenet11k/ <br>
+modify the datapath & model_path in `train_dist.sh` <br>
+run  `bash train_dist.sh` <br>
 
 # imagenet-1k training    
-mount the ImageNet-pytorch imagent-1k dataset
-make the soft link `imagenet11k_train -> train/` `imagenet11k_val -> val/`
-modify the datapath & imagenet22k pretrain model path in `train_dist_imagenet1k.sh`
-run `bash  train_dist_imagenet1k.sh`
+mount the ImageNet-pytorch imagent-1k dataset <br>
+make the soft link `imagenet11k_train -> train/` `imagenet11k_val -> val/` <br>
+modify the datapath & imagenet22k pretrain model path in `train_dist_imagenet1k.sh` <br>
+run `bash  train_dist_imagenet1k.sh`<br>
 
 
 # ImageNet-21K Pretraining for the Masses
